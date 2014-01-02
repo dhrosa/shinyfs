@@ -1,101 +1,70 @@
 import qualified Data.ByteString.Char8 as B
 
 import System.Fuse
+import System.Environment
 import System.Posix.Types
 import System.Posix.Files
 import System.Posix.IO
 
+import Shiny.FS.Internal
+
+import Shiny.Hardware (Hardware)
+import Shiny.Hardware.Dummy (mkDummyHardware)
+
 type HT = ()
 
-ledFSOps :: FuseOperations HT
-ledFSOps = defaultFuseOps { fuseGetFileStat = ledGetFileStat
-                            , fuseOpen        = ledOpen
-                            , fuseRead        = ledRead 
-                            , fuseOpenDirectory = ledOpenDirectory
-                            , fuseReadDirectory = ledReadDirectory
-                            , fuseGetFileSystemStats = ledGetFileSystemStats
+topLevelFiles = [
+  "status",
+  "reset",
+  "setall",
+  "count"
+  ]
+
+data FSState = FSState
+                 {
+                   hardware :: Hardware
+                 }
+
+ledFSOps :: Hardware -> FuseOperations HT
+ledFSOps hw = defaultFuseOps { fuseGetFileStat = ledGetFileStat state
+                             , fuseOpen        = ledOpen state
+                             , fuseRead        = ledRead state
+                             , fuseOpenDirectory = ledOpenDirectory state
+                             , fuseReadDirectory = ledReadDirectory state
+                             , fuseGetFileSystemStats = ledGetFileSystemStats state
                             }
-helloString :: B.ByteString
-helloString = B.pack "Hello World, HFuse!\n"
+  where
+    state = FSState hw
 
-helloPath :: FilePath
-helloPath = "/hello"
-dirStat ctx = FileStat { statEntryType = Directory
-                       , statFileMode = foldr1 unionFileModes
-                                          [ ownerReadMode
-                                          , ownerExecuteMode
-                                          , groupReadMode
-                                          , groupExecuteMode
-                                          , otherReadMode
-                                          , otherExecuteMode
-                                          ]
-                       , statLinkCount = 2
-                       , statFileOwner = fuseCtxUserID ctx
-                       , statFileGroup = fuseCtxGroupID ctx
-                       , statSpecialDeviceID = 0
-                       , statFileSize = 4096
-                       , statBlocks = 1
-                       , statAccessTime = 0
-                       , statModificationTime = 0
-                       , statStatusChangeTime = 0
-                       }
+ledGetFileStat :: FSState -> FilePath -> IO (Either Errno FileStat)
+ledGetFileStat state "/" = getFuseContext >>= (return . Right . dirStat)
+ledGetFileStat (FSState hw) (_:path)
+  | path `elem` topLevelFiles = getFuseContext >>= (return . Right . fileStat)
+  | otherwise = return $ Left eNOENT
 
-fileStat ctx = FileStat { statEntryType = RegularFile
-                        , statFileMode = foldr1 unionFileModes
-                                           [ ownerReadMode
-                                           , groupReadMode
-                                           , otherReadMode
-                                           ]
-                        , statLinkCount = 1
-                        , statFileOwner = fuseCtxUserID ctx
-                        , statFileGroup = fuseCtxGroupID ctx
-                        , statSpecialDeviceID = 0
-                        , statFileSize = fromIntegral $ B.length helloString
-                        , statBlocks = 1
-                        , statAccessTime = 0
-                        , statModificationTime = 0
-                        , statStatusChangeTime = 0
-                        }
+ledOpenDirectory state "/" = return eOK
+ledOpenDirectory state _   = return eNOENT
 
-ledGetFileStat :: FilePath -> IO (Either Errno FileStat)
-ledGetFileStat "/" = do
+ledReadDirectory :: FSState -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
+ledReadDirectory _ "/" = do
     ctx <- getFuseContext
-    return $ Right $ dirStat ctx
-ledGetFileStat path | path == helloPath = do
-    ctx <- getFuseContext
-    return $ Right $ fileStat ctx
-ledGetFileStat _ =
-    return $ Left eNOENT
+    return $ Right $ [(".",          dirStat  ctx)
+                     ,("..",         dirStat  ctx)
+                     ] ++ zip topLevelFiles (repeat (fileStat ctx))
+ledReadDirectory _ _ = return (Left (eNOENT))
 
-ledOpenDirectory "/" = return eOK
-ledOpenDirectory _   = return eNOENT
-
-ledReadDirectory :: FilePath -> IO (Either Errno [(FilePath, FileStat)])
-ledReadDirectory "/" = do
-    ctx <- getFuseContext
-    return $ Right [(".",          dirStat  ctx)
-                   ,("..",         dirStat  ctx)
-                   ,(helloName,    fileStat ctx)
-                   ]
-    where (_:helloName) = helloPath
-ledReadDirectory _ = return (Left (eNOENT))
-
-ledOpen :: FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-ledOpen path mode flags
-    | path == helloPath = case mode of
-                            ReadOnly -> return (Right ())
-                            _        -> return (Left eACCES)
-    | otherwise         = return (Left eNOENT)
+ledOpen :: FSState -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+ledOpen _ (_:path) mode flags
+  | path `elem` topLevelFiles = return (Right ())
+  | otherwise                 = return (Left eNOENT)
 
 
-ledRead :: FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
-ledRead path _ byteCount offset
-    | path == helloPath =
-        return $ Right $ B.take (fromIntegral byteCount) $ B.drop (fromIntegral offset) helloString
-    | otherwise         = return $ Left eNOENT
+ledRead :: FSState -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
+ledRead _ (_:"count") _ _ _ = (return . Right . B.pack . show) 1024
+ledRead _ _ _ _ _ = return $ Left eNOENT
 
-ledGetFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-ledGetFileSystemStats str =
+ledGetFileSystemStats :: FSState -> String -> IO (Either Errno FileSystemStats)
+ledGetFileSystemStats _ str =
   return $ Right $ FileSystemStats
     { fsStatBlockSize = 512
     , fsStatBlockCount = 1
@@ -107,4 +76,7 @@ ledGetFileSystemStats str =
     }
 
 main = do
-  fuseMain ledFSOps defaultExceptionHandler
+  progName <- getProgName
+  args <- getArgs
+  hw <- mkDummyHardware 8
+  fuseRun progName args (ledFSOps hw) defaultExceptionHandler
