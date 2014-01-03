@@ -20,8 +20,8 @@ data FileTree = File
                 }
               | Dir
                 {
-                  dirName  :: String,
-                  dirTrees :: [FileTree]
+                  dirName     :: String,
+                  dirChildren :: [FileTree]
                 }
   
 instance Show FileTree where
@@ -44,27 +44,31 @@ treeName :: FileTree -> String
 treeName (File fName _ _) = fName
 treeName (Dir dName _) = dName
 
+-- | Is this tree a file?
 isFile :: FileTree -> Bool
-isFile (File _ _ _) = True
+isFile File{} = True
 isFile _ = False
 
+-- | Is this tree a directory?
 isDir :: FileTree -> Bool
 isDir = not . isFile
 
+-- | Uses the given path to retrieve a descendant of the tree
 lookupPath :: String -> FileTree -> Maybe (FileTree)
 lookupPath "/" tree
   | isDir tree = Just tree
-  | otherwise = Nothing
+  | otherwise  = Nothing
 lookupPath ('/':path) tree
-  | null subPath = subTree
-  | otherwise    = subTree >>= (lookupPath subPath)
+  | null subPath = child
+  | otherwise    = child >>= (lookupPath subPath)
   where
-    subTree = find ((==name) . treeName) (dirTrees tree)
+    child = find ((==name) . treeName) (dirChildren tree)
     (name, subPath) = span (/= '/') path
 
+-- | File status
 stat :: FileTree -> IO (FileStat)
 
-stat (Dir _ _) = do
+stat Dir{} = do
   ctx <- getFuseContext
   return $ FileStat { statEntryType = Directory
                        , statFileMode = foldr1 unionFileModes

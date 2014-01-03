@@ -29,8 +29,8 @@ ledFSOps hw = defaultFuseOps { fuseGetFileStat = ledGetFileStat tree
 ledGetFileStat :: FileTree -> FilePath -> IO (Either Errno FileStat)
 ledGetFileStat tree path = helper (lookupPath path tree)
   where
-    helper Nothing  = return (Left eNOENT)
     helper (Just t) = liftM Right (stat t)
+    helper Nothing  = return (Left eNOENT)
 
 ledOpenDirectory tree "/" = return eOK
 ledOpenDirectory tree _   = return eNOENT
@@ -38,27 +38,23 @@ ledOpenDirectory tree _   = return eNOENT
 ledReadDirectory :: FileTree -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 ledReadDirectory tree path = helper (lookupPath path tree)
   where
-    helper Nothing                 = return (Left eNOENT)
-    helper (Just File{})           = return (Left eNOENT)
     helper (Just (Dir _ children)) = liftM Right $ mapM pathStat children
-    
-    pathStat t = do
-      st <- stat t
-      return (treeName t, st)
+    helper _                       = return (Left eNOENT)
+    pathStat child = do
+      st <- stat child
+      return (treeName child, st)
 
 ledOpen :: FileTree -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 ledOpen tree path mode flags = helper (lookupPath path tree)
   where
-    helper Nothing        = return (Left eNOENT)
-    helper (Just Dir {})  = return (Left eNOENT)
     helper (Just File {}) = return (Right ())
+    helper _             = return (Left eNOENT)
 
 ledRead :: FileTree -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
 ledRead tree path _ count offset = helper (lookupPath path tree)
   where
-    helper Nothing                 = return (Left eNOENT)
-    helper (Just Dir{})            = return (Left eNOENT)
     helper (Just (File _ fRead _)) = liftM Right (fRead count offset)
+    helper _                      = return (Left eNOENT)
     
 ledGetFileSystemStats :: FileTree -> String -> IO (Either Errno FileSystemStats)
 ledGetFileSystemStats _ str =
