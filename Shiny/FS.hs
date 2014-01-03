@@ -15,16 +15,16 @@ import Control.Monad
 
 type HT = ()
 
-ledFSOps :: Hardware -> FuseOperations HT
-ledFSOps hw = defaultFuseOps { fuseGetFileStat = ledGetFileStat tree
-                             , fuseOpen        = ledOpen tree
-                             , fuseRead        = ledRead tree
-                             , fuseOpenDirectory = ledOpenDirectory tree
-                             , fuseReadDirectory = ledReadDirectory tree
-                             , fuseGetFileSystemStats = ledGetFileSystemStats tree
-                            }
-  where
-    tree = mkFileTree hw
+ledFSOps :: Hardware -> IO (FuseOperations HT)
+ledFSOps hw = do
+  tree <- mkFileTree hw
+  return defaultFuseOps { fuseGetFileStat = ledGetFileStat tree
+                        , fuseOpen        = ledOpen tree
+                        , fuseRead        = ledRead tree
+                        , fuseOpenDirectory = ledOpenDirectory tree
+                        , fuseReadDirectory = ledReadDirectory tree
+                        , fuseGetFileSystemStats = ledGetFileSystemStats tree
+                        }
 
 ledGetFileStat :: FileTree -> FilePath -> IO (Either Errno FileStat)
 ledGetFileStat tree path = helper (lookupPath path tree)
@@ -32,8 +32,10 @@ ledGetFileStat tree path = helper (lookupPath path tree)
     helper (Just t) = liftM Right (stat t)
     helper Nothing  = return (Left eNOENT)
 
-ledOpenDirectory tree "/" = return eOK
-ledOpenDirectory tree _   = return eNOENT
+ledOpenDirectory tree path = helper (lookupPath path tree)
+  where
+    helper (Just Dir{}) = return eOK
+    helper _            = return eNOENT
 
 ledReadDirectory :: FileTree -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 ledReadDirectory tree path = helper (lookupPath path tree)
@@ -72,4 +74,5 @@ main = do
   progName <- getProgName
   args <- getArgs
   hw <- mkDummyHardware 8
-  fuseRun progName args (ledFSOps hw) defaultExceptionHandler
+  fs <- ledFSOps hw
+  fuseRun progName args fs defaultExceptionHandler

@@ -29,15 +29,30 @@ instance Show FileTree where
   show (Dir name trees) = "Dir: " ++ name ++ " " ++ (show $ map treeName trees)
                 
 -- | Constructs the file system from the given hardware
-mkFileTree :: Hardware -> FileTree
-mkFileTree hw = Dir "/" $ [countFile hw]
+mkFileTree :: Hardware -> IO (FileTree)
+mkFileTree hw = do
+  numLeds <- displaySize hw
+  let ledDir n = Dir (show n) [emptyFile "color"]
+  return $ Dir "/" $ [countFile numLeds, Dir "leds" (map ledDir [0..numLeds-1])]
 
--- | File representing the number of LEDs in the dispaly
-countFile :: Hardware -> FileTree
-countFile hw = File "count" countRead countSize
+-- | Adds a parent tree to a dir
+addChild :: FileTree -> FileTree -> FileTree
+addChild child (Dir name children) = Dir name (child:children)
+addChild _ _                       = error "Cannot add children to a file."
+
+-- | Constructs file with a given name and no contents
+emptyFile :: String -> FileTree
+emptyFile name = File name emptyRead emptySize
   where
-    countRead _ _ = liftM (B.pack . show) (displaySize hw)
-    countSize = liftM (length . show) (displaySize hw)
+    emptyRead _ _ = return B.empty
+    emptySize = return 0
+
+-- | File representing the number of LEDs in the display
+countFile :: Int -> FileTree
+countFile size = File "count" countRead countSize
+  where
+    countRead _ _ = return (B.pack (show size))
+    countSize     = return (length (show size))
 
 -- | The name of a file or directory
 treeName :: FileTree -> String
