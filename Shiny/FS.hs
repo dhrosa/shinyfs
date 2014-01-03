@@ -3,7 +3,7 @@ import qualified Data.ByteString.Char8 as B
 import System.Fuse
 import System.Environment
 import System.Posix.Types
-import System.Posix.Files
+import System.Posix.Files hiding (fileSize)
 import System.Posix.IO
 
 import Shiny.FS.Internal
@@ -11,59 +11,66 @@ import Shiny.FS.Internal
 import Shiny.Hardware (Hardware)
 import Shiny.Hardware.Dummy (mkDummyHardware)
 
+import Control.Monad
+
 type HT = ()
 
-topLevelFiles = [
-  "status",
-  "reset",
-  "setall",
-  "count"
-  ]
-
-data FSState = FSState
-                 {
-                   hardware :: Hardware
-                 }
-
 ledFSOps :: Hardware -> FuseOperations HT
-ledFSOps hw = defaultFuseOps { fuseGetFileStat = ledGetFileStat state
-                             , fuseOpen        = ledOpen state
-                             , fuseRead        = ledRead state
-                             , fuseOpenDirectory = ledOpenDirectory state
-                             , fuseReadDirectory = ledReadDirectory state
-                             , fuseGetFileSystemStats = ledGetFileSystemStats state
+ledFSOps hw = defaultFuseOps { fuseGetFileStat = ledGetFileStat tree
+                             , fuseOpen        = ledOpen tree
+                             , fuseRead        = ledRead tree
+                             , fuseOpenDirectory = ledOpenDirectory tree
+                             , fuseReadDirectory = ledReadDirectory tree
+                             , fuseGetFileSystemStats = ledGetFileSystemStats tree
                             }
   where
-    state = FSState hw
+    tree = mkFileTree hw
 
-ledGetFileStat :: FSState -> FilePath -> IO (Either Errno FileStat)
-ledGetFileStat state "/" = getFuseContext >>= (return . Right . dirStat)
-ledGetFileStat (FSState hw) (_:path)
-  | path `elem` topLevelFiles = getFuseContext >>= (return . Right . fileStat)
-  | otherwise = return $ Left eNOENT
+ledGetFileStat :: FileTree -> FilePath -> IO (Either Errno FileStat)
+ledGetFileStat tree path = helper subTree
+  where
+    subTree = lookupPath path tree                         
+    helper Nothing          = return (Left eNOENT)
+    helper (Just (Dir _ _)) = getFuseContext >>= (return . Right . dirStat)
+    helper (Just (File _ _ getSize)) = do
+      ctx <- getFuseContext
+      size <- getSize
+      return $ Right $ fileStat ctx size
 
-ledOpenDirectory state "/" = return eOK
-ledOpenDirectory state _   = return eNOENT
+ledOpenDirectory tree "/" = return eOK
+ledOpenDirectory tree _   = return eNOENT
 
-ledReadDirectory :: FSState -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-ledReadDirectory _ "/" = do
-    ctx <- getFuseContext
-    return $ Right $ [(".",          dirStat  ctx)
-                     ,("..",         dirStat  ctx)
-                     ] ++ zip topLevelFiles (repeat (fileStat ctx))
-ledReadDirectory _ _ = return (Left (eNOENT))
+ledReadDirectory :: FileTree -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
+ledReadDirectory tree path = helper (lookupPath path tree)
+  where
+    helper Nothing                   = return (Left eNOENT)
+    helper (Just File{})             = return (Left eNOENT)
+    helper (Just (Dir dName dTrees)) = liftM Right $ sequence $ map stat dTrees
+    
+    stat :: FileTree -> IO ((FilePath, FileStat))
+    stat (Dir dName _) = do
+      ctx <- getFuseContext
+      return (dName, dirStat ctx)
+    stat (File fName _ fSize) = do
+      ctx <- getFuseContext
+      size <- fSize
+      return (fName, fileStat ctx size)
 
-ledOpen :: FSState -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-ledOpen _ (_:path) mode flags
-  | path `elem` topLevelFiles = return (Right ())
-  | otherwise                 = return (Left eNOENT)
+ledOpen :: FileTree -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
+ledOpen tree path mode flags = helper (lookupPath path tree)
+  where
+    helper Nothing        = return (Left eNOENT)
+    helper (Just Dir {})  = return (Left eNOENT)
+    helper (Just File {}) = return (Right ())
 
-
-ledRead :: FSState -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
-ledRead _ (_:"count") _ _ _ = (return . Right . B.pack . show) 1024
-ledRead _ _ _ _ _ = return $ Left eNOENT
-
-ledGetFileSystemStats :: FSState -> String -> IO (Either Errno FileSystemStats)
+ledRead :: FileTree -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
+ledRead tree path _ count offset = helper (lookupPath path tree)
+  where
+    helper Nothing                 = return (Left eNOENT)
+    helper (Just Dir{})            = return (Left eNOENT)
+    helper (Just (File _ fRead _)) = liftM Right (fRead count offset)
+    
+ledGetFileSystemStats :: FileTree -> String -> IO (Either Errno FileSystemStats)
 ledGetFileSystemStats _ str =
   return $ Right $ FileSystemStats
     { fsStatBlockSize = 512

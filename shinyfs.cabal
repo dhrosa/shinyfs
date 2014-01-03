@@ -50,4 +50,4 @@ executable shinyfs
   other-modules:       Shiny.FS.Internal
   
   -- Other library packages from which modules are imported.
-  build-depends:       base ==4.6.*, bytestring ==0.10.*, HFuse ==0.2.*, unix ==2.6.*, shiny
+  build-depends:       base ==4.6.*, bytestring ==0.10.*, HFuse, unix ==2.6.*, shiny
