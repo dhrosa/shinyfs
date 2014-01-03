@@ -27,15 +27,10 @@ ledFSOps hw = defaultFuseOps { fuseGetFileStat = ledGetFileStat tree
     tree = mkFileTree hw
 
 ledGetFileStat :: FileTree -> FilePath -> IO (Either Errno FileStat)
-ledGetFileStat tree path = helper subTree
+ledGetFileStat tree path = helper (lookupPath path tree)
   where
-    subTree = lookupPath path tree                         
-    helper Nothing          = return (Left eNOENT)
-    helper (Just (Dir _ _)) = getFuseContext >>= (return . Right . dirStat)
-    helper (Just (File _ _ getSize)) = do
-      ctx <- getFuseContext
-      size <- getSize
-      return $ Right $ fileStat ctx size
+    helper Nothing  = return (Left eNOENT)
+    helper (Just t) = liftM Right (stat t)
 
 ledOpenDirectory tree "/" = return eOK
 ledOpenDirectory tree _   = return eNOENT
@@ -43,18 +38,13 @@ ledOpenDirectory tree _   = return eNOENT
 ledReadDirectory :: FileTree -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
 ledReadDirectory tree path = helper (lookupPath path tree)
   where
-    helper Nothing                   = return (Left eNOENT)
-    helper (Just File{})             = return (Left eNOENT)
-    helper (Just (Dir dName dTrees)) = liftM Right $ sequence $ map stat dTrees
+    helper Nothing                 = return (Left eNOENT)
+    helper (Just File{})           = return (Left eNOENT)
+    helper (Just (Dir _ children)) = liftM Right $ mapM pathStat children
     
-    stat :: FileTree -> IO ((FilePath, FileStat))
-    stat (Dir dName _) = do
-      ctx <- getFuseContext
-      return (dName, dirStat ctx)
-    stat (File fName _ fSize) = do
-      ctx <- getFuseContext
-      size <- fSize
-      return (fName, fileStat ctx size)
+    pathStat t = do
+      st <- stat t
+      return (treeName t, st)
 
 ledOpen :: FileTree -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
 ledOpen tree path mode flags = helper (lookupPath path tree)

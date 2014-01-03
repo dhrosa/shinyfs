@@ -62,7 +62,11 @@ lookupPath ('/':path) tree
     subTree = find ((==name) . treeName) (dirTrees tree)
     (name, subPath) = span (/= '/') path
 
-dirStat ctx = FileStat { statEntryType = Directory
+stat :: FileTree -> IO (FileStat)
+
+stat (Dir _ _) = do
+  ctx <- getFuseContext
+  return $ FileStat { statEntryType = Directory
                        , statFileMode = foldr1 unionFileModes
                                           [ ownerReadMode
                                           , ownerExecuteMode
@@ -82,7 +86,10 @@ dirStat ctx = FileStat { statEntryType = Directory
                        , statStatusChangeTime = 0
                        }
 
-fileStat ctx fsize = FileStat { statEntryType = RegularFile
+stat (File _ _ fSize) = do
+  ctx <- getFuseContext
+  size <- fSize
+  return $ FileStat { statEntryType = RegularFile
                               , statFileMode = foldr1 unionFileModes
                                                [ ownerReadMode
                                                , groupReadMode
@@ -92,7 +99,7 @@ fileStat ctx fsize = FileStat { statEntryType = RegularFile
                               , statFileOwner = fuseCtxUserID ctx
                               , statFileGroup = fuseCtxGroupID ctx
                               , statSpecialDeviceID = 0
-                              , statFileSize = fromIntegral fsize
+                              , statFileSize = fromIntegral size
                               , statBlocks = 1
                               , statAccessTime = 0
                               , statModificationTime = 0
