@@ -27,36 +27,31 @@ ledFSOps hw = do
                         }
 
 ledGetFileStat :: FileTree -> FilePath -> IO (Either Errno FileStat)
-ledGetFileStat tree path = helper (lookupPath path tree)
-  where
-    helper (Just t) = liftM Right (stat t)
-    helper Nothing  = return (Left eNOENT)
+ledGetFileStat tree path =  case (lookupPath path tree) of
+  Just t   -> liftM Right (stat t)
+  Nothing  -> return (Left eNOENT)
 
-ledOpenDirectory tree path = helper (lookupPath path tree)
-  where
-    helper (Just Dir{}) = return eOK
-    helper _            = return eNOENT
+ledOpenDirectory tree path = case (lookupPath path tree) of
+  Just Dir{} -> return eOK
+  _          -> return eNOENT
 
 ledReadDirectory :: FileTree -> FilePath -> IO (Either Errno [(FilePath, FileStat)])
-ledReadDirectory tree path = helper (lookupPath path tree)
-  where
-    helper (Just (Dir _ children)) = liftM Right $ mapM pathStat children
-    helper _                       = return (Left eNOENT)
-    pathStat child = do
-      st <- stat child
-      return (treeName child, st)
+ledReadDirectory tree path = case (lookupPath path tree) of
+  Just (Dir _ children) -> liftM Right $ mapM pathStat children
+  _                     -> return (Left eNOENT)
+  where pathStat child = do
+          st <- stat child
+          return (treeName child, st)
 
 ledOpen :: FileTree -> FilePath -> OpenMode -> OpenFileFlags -> IO (Either Errno HT)
-ledOpen tree path mode flags = helper (lookupPath path tree)
-  where
-    helper (Just File {}) = return (Right ())
-    helper _             = return (Left eNOENT)
+ledOpen tree path mode flags = case (lookupPath path tree) of
+  Just File {} -> return (Right ())
+  _            -> return (Left eNOENT)
 
 ledRead :: FileTree -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
-ledRead tree path _ count offset = helper (lookupPath path tree)
-  where
-    helper (Just (File _ fRead _)) = liftM Right (fRead count offset)
-    helper _                      = return (Left eNOENT)
+ledRead tree path _ count offset = case (lookupPath path tree) of
+  Just (File _ fRead _) -> liftM Right (fRead count offset)
+  _                     -> return (Left eNOENT)
     
 ledGetFileSystemStats :: FileTree -> String -> IO (Either Errno FileSystemStats)
 ledGetFileSystemStats _ str =
