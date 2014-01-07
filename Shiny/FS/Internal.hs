@@ -10,8 +10,13 @@ import System.Posix.IO
 import Control.Monad
 import Data.List (find)
 
+import Shiny.Shiny
 import Shiny.Hardware
-  
+
+import Text.Printf (printf)
+
+import Shiny.Focus
+
 data FileTree = File
                 {
                   fileName  :: String,
@@ -32,8 +37,9 @@ instance Show FileTree where
 mkFileTree :: Hardware -> IO (FileTree)
 mkFileTree hw = do
   numLeds <- displaySize hw
-  let ledDir n = Dir (show n) [emptyFile "color"]
-  return $ Dir "/" $ [countFile numLeds, Dir "leds" (map ledDir [0..numLeds-1])]
+  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (map (ledDir hw all numLeds) [0..numLeds-1])]
+  where
+    all = onIndices (const True)
 
 -- | Adds a parent tree to a dir
 addChild :: FileTree -> FileTree -> FileTree
@@ -53,6 +59,22 @@ countFile size = File "count" countRead countSize
   where
     countRead _ _ = return (B.pack (show size))
     countSize     = return (length (show size))
+
+-- | File for viewing a subset of the display as newline separated hex triplets
+hexFile :: Hardware -> Focus -> FileTree
+hexFile hw focus = File "hex" readHex sizeHex
+  where
+    toHex (RGB r g b) = printf "%02x%02x%02x" r g b
+    getFocusedDisplay = liftM (focusOn focus) (readDisplay hw)
+    readHex _ _ = liftM (B.pack . unlines . map toHex) getFocusedDisplay
+    sizeHex     = liftM ((7*) . length) getFocusedDisplay
+
+-- | TODO
+ledDir :: Hardware -> Focus -> Int -> Int -> FileTree
+ledDir hw focus numLeds n = Dir (show n) [Dir "to" toDirs]
+  where
+    toDirs = map subLedDir [n..numLeds-1]
+    subLedDir m = Dir (show m) [hexFile hw (range n (m+1))]
 
 -- | The name of a file or directory
 treeName :: FileTree -> String
