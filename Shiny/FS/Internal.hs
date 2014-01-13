@@ -20,7 +20,7 @@ import Shiny.Focus
 data FileTree = File
                 {
                   fileName  :: String,
-                  fileRead  :: ByteCount -> FileOffset -> IO (B.ByteString),
+                  fileRead  :: ByteCount -> FileOffset -> IO (Either Errno B.ByteString),
                   fileSize  :: IO (Int)
                 }
               | Dir
@@ -50,14 +50,14 @@ addChild _ _                       = error "Cannot add children to a file."
 emptyFile :: String -> FileTree
 emptyFile name = File name emptyRead emptySize
   where
-    emptyRead _ _ = return B.empty
+    emptyRead _ _ = return (Right B.empty)
     emptySize = return 0
 
 -- | File representing the number of LEDs in the display
 countFile :: Int -> FileTree
 countFile size = File "count" countRead countSize
   where
-    countRead _ _ = return (B.pack (show size))
+    countRead _ _ = return $ Right $ B.pack (show size)
     countSize     = return (length (show size))
 
 -- | File for viewing a subset of the display as newline separated hex triplets
@@ -66,7 +66,7 @@ hexFile hw focus = File "hex" readHex sizeHex
   where
     toHex (RGB r g b) = printf "%02x%02x%02x" r g b
     getFocusedDisplay = liftM (focusOn focus) (readDisplay hw)
-    readHex _ _ = liftM (B.pack . unlines . map toHex) getFocusedDisplay
+    readHex _ _ = liftM (Right . B.pack . unlines . map toHex) getFocusedDisplay
     sizeHex     = liftM ((7*) . length) getFocusedDisplay
 
 -- | TODO
