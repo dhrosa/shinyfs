@@ -21,6 +21,7 @@ data FileTree = File
                 {
                   fileName  :: String,
                   fileRead  :: ByteCount -> FileOffset -> IO (Either Errno B.ByteString),
+                  fileWrite :: B.ByteString -> FileOffset -> IO (Either Errno ByteCount),
                   fileSize  :: IO (Int)
                 }
               | Dir
@@ -30,7 +31,7 @@ data FileTree = File
                 }
   
 instance Show FileTree where
-  show (File name _ _) = "File: " ++ name
+  show (File name _ _ _) = "File: " ++ name
   show (Dir name trees) = "Dir: " ++ name ++ " " ++ (show $ map treeName trees)
                 
 -- | Constructs the file system from the given hardware
@@ -48,21 +49,23 @@ addChild _ _                       = error "Cannot add children to a file."
 
 -- | Constructs file with a given name and no contents
 emptyFile :: String -> FileTree
-emptyFile name = File name emptyRead emptySize
+emptyFile name = File name emptyRead emptyWrite emptySize
   where
-    emptyRead _ _ = return (Right B.empty)
+    emptyRead _ _  = return (Right B.empty)
+    emptyWrite _ _ = return (Left eACCES)
     emptySize = return 0
 
 -- | File representing the number of LEDs in the display
 countFile :: Int -> FileTree
-countFile size = File "count" countRead countSize
+countFile size = File "count" countRead countWrite countSize
   where
-    countRead _ _ = return $ Right $ B.pack (show size)
-    countSize     = return (length (show size))
+    countRead _ _  = return $ Right $ B.pack (show size)
+    countWrite _ _ = return (Left eACCES)
+    countSize      = return (length (show size))
 
 -- | File for viewing a subset of the display as newline separated hex triplets
 hexFile :: Hardware -> Focus -> FileTree
-hexFile hw focus = File "hex" readHex sizeHex
+hexFile hw focus = File "hex" readHex writeHex sizeHex
   where
     toHex (RGB r g b)    = printf "%02x%02x%02x" r g b
     getFocusedDisplay    = liftM (focusOn focus) (readDisplay hw)
@@ -70,6 +73,7 @@ hexFile hw focus = File "hex" readHex sizeHex
       text <- liftM (unlines . map toHex) getFocusedDisplay
       let subText = take (fromIntegral count) . drop (fromIntegral offset) $ text
       return (Right . B.pack $ subText)
+    writeHex _ _         = return (Left eACCES)
     sizeHex              = liftM ((7*) . length) getFocusedDisplay
 
 -- | TODO
@@ -81,7 +85,7 @@ ledDir hw focus numLeds n = Dir (show n) [Dir "to" toDirs]
 
 -- | The name of a file or directory
 treeName :: FileTree -> String
-treeName (File fName _ _) = fName
+treeName (File fName _ _ _) = fName
 treeName (Dir dName _) = dName
 
 -- | Is this tree a file?
@@ -130,7 +134,7 @@ stat Dir{} = do
                        , statStatusChangeTime = 0
                        }
 
-stat (File _ _ fSize) = do
+stat (File _ _ _ fSize) = do
   ctx <- getFuseContext
   size <- fSize
   return $ FileStat { statEntryType = RegularFile

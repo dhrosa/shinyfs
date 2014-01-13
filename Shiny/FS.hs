@@ -50,7 +50,7 @@ ledOpen tree path mode flags = case (lookupPath path tree) of
 
 ledRead :: FileTree -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
 ledRead tree path _ count offset = case (lookupPath path tree) of
-  Just (File _ fRead _) -> fRead count offset
+  Just (File _ fRead _  _) -> fRead count offset
   _                     -> return (Left eNOENT)
     
 ledGetFileSystemStats :: FileTree -> String -> IO (Either Errno FileSystemStats)
