@@ -31,8 +31,8 @@ data FileTree = File
                 }
   
 instance Show FileTree where
-  show (File name _ _ _) = "File: " ++ name
-  show (Dir name trees) = "Dir: " ++ name ++ " " ++ (show $ map treeName trees)
+  show File {fileName = name}  = "File: " ++ name
+  show (Dir name children) = "Dir: " ++ name ++ " " ++ (show $ map treeName children)
                 
 -- | Constructs the file system from the given hardware
 mkFileTree :: Hardware -> IO (FileTree)
@@ -85,8 +85,8 @@ ledDir hw focus numLeds n = Dir (show n) [Dir "to" toDirs]
 
 -- | The name of a file or directory
 treeName :: FileTree -> String
-treeName (File fName _ _ _) = fName
-treeName (Dir dName _) = dName
+treeName File{fileName = fName} = fName
+treeName Dir{dirName = dName}   = dName
 
 -- | Is this tree a file?
 isFile :: FileTree -> Bool
@@ -134,7 +134,7 @@ stat Dir{} = do
                        , statStatusChangeTime = 0
                        }
 
-stat (File _ _ _ fSize) = do
+stat File {fileSize = fSize} = do
   ctx <- getFuseContext
   size <- fSize
   return $ FileStat { statEntryType = RegularFile
