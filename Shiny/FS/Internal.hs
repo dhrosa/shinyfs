@@ -64,10 +64,13 @@ countFile size = File "count" countRead countSize
 hexFile :: Hardware -> Focus -> FileTree
 hexFile hw focus = File "hex" readHex sizeHex
   where
-    toHex (RGB r g b) = printf "%02x%02x%02x" r g b
-    getFocusedDisplay = liftM (focusOn focus) (readDisplay hw)
-    readHex _ _ = liftM (Right . B.pack . unlines . map toHex) getFocusedDisplay
-    sizeHex     = liftM ((7*) . length) getFocusedDisplay
+    toHex (RGB r g b)    = printf "%02x%02x%02x" r g b
+    getFocusedDisplay    = liftM (focusOn focus) (readDisplay hw)
+    readHex count offset = do
+      text <- liftM (unlines . map toHex) getFocusedDisplay
+      let subText = take (fromIntegral count) . drop (fromIntegral offset) $ text
+      return (Right . B.pack $ subText)
+    sizeHex              = liftM ((7*) . length) getFocusedDisplay
 
 -- | TODO
 ledDir :: Hardware -> Focus -> Int -> Int -> FileTree
