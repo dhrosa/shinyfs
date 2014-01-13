@@ -47,7 +47,9 @@ executable shinyfs
   main-is:             Shiny/FS.hs
   
   -- Modules included in this executable, other than Main.
-  other-modules:       Shiny.FS.Internal
-  
+  other-modules:       Shiny.FS.Internal  
+
   -- Other library packages from which modules are imported.
   build-depends:       base ==4.6.*, bytestring ==0.10.*, HFuse, unix ==2.6.*, shiny
+
+  ghc-options:         -Wall
