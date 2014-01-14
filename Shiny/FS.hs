@@ -21,6 +21,8 @@ ledFSOps hw = do
   return defaultFuseOps { fuseGetFileStat = ledGetFileStat tree
                         , fuseOpen        = ledOpen tree
                         , fuseRead        = ledRead tree
+                        , fuseWrite       = ledWrite tree
+                        , fuseSetFileSize = ledTruncate tree
                         , fuseOpenDirectory = ledOpenDirectory tree
                         , fuseReadDirectory = ledReadDirectory tree
                         , fuseGetFileSystemStats = ledGetFileSystemStats tree
@@ -53,6 +55,14 @@ ledRead tree path _ count offset = case (lookupPath path tree) of
   Just File {fileRead = fRead} -> fRead count offset
   _                            -> return (Left eNOENT)
     
+ledWrite :: FileTree -> FilePath -> HT -> B.ByteString -> FileOffset -> IO (Either Errno ByteCount)
+ledWrite tree path _ dataIn offset = case (lookupPath path tree) of
+  Just File {fileWrite = fWrite} -> fWrite dataIn offset
+  _                              -> return (Left eNOENT)
+                                  
+ledTruncate :: FileTree -> FilePath -> FileOffset -> IO Errno
+ledTruncate _ _ _ = return eOK
+                                    
 ledGetFileSystemStats :: FileTree -> String -> IO (Either Errno FileSystemStats)
 ledGetFileSystemStats _ str =
   return $ Right $ FileSystemStats

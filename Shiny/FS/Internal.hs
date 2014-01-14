@@ -9,11 +9,14 @@ import System.Posix.IO
 
 import Control.Monad
 import Data.List (find)
+import Data.Maybe
 
 import Shiny.Shiny
 import Shiny.Hardware
 
 import Text.Printf (printf)
+import Data.List.Split (chunksOf)
+import qualified Numeric as N
 
 import Shiny.Focus
 
@@ -69,13 +72,49 @@ hexFile hw focus = File "hex" readHex writeHex sizeHex
   where
     toHex (RGB r g b)    = printf "%02x%02x%02x" r g b
     getFocusedDisplay    = liftM (focusOn focus) (readDisplay hw)
+    
     readHex count offset = do
       text <- liftM (unlines . map toHex) getFocusedDisplay
       let subText = take (fromIntegral count) . drop (fromIntegral offset) $ text
       return (Right . B.pack $ subText)
-    writeHex _ _         = return (Left eACCES)
-    sizeHex              = liftM ((7*) . length) getFocusedDisplay
+      
+    writeHex inData offset
+      | (fromIntegral offset) `mod` 7 == 0 = if (all isJust parsedLEDs) then
+                                               do
+                                                 oldDisp <- readDisplay hw
+                                                 updateDisplay hw $ replace focus (catMaybes parsedLEDs) oldDisp
+                                                 return $ Right $ fromIntegral $ B.length inData
+                                             else
+                                               return $ Left eINVAL
+      | otherwise = error "unaligned writes not implemented yet."
+      where
+        parsedLEDs = map (readLEDHex . init) $ chunksOf 7 $ B.unpack inData
+        
+    sizeHex                = liftM ((7*) . length) getFocusedDisplay
 
+
+-- | Attempts to parse an LED from a string of 6 hex digits
+readLEDHex :: String -> Maybe LED
+readLEDHex str
+  | all success parsed = case (map (fst.head) parsed) of
+      [r, g, b] -> Just (RGB r g b)
+      _         -> Nothing
+  | otherwise          = Nothing
+  where
+    parsed = map N.readHex (chunksOf 2 str)
+    success [(_, rest)] = null rest
+    success _           = False
+    
+writeHex inData offset
+  | offset `mod` 7 == 0 = if (all isJust parsedLEDs) then
+                            Right $ catMaybes parsedLEDs
+                          else
+                            Left eINVAL
+  | otherwise = error "unaligned writes not implemented yet."
+    
+    where
+      parsedLEDs = map (readLEDHex . init) $ chunksOf 7 $ B.unpack inData
+    
 -- | TODO
 ledDir :: Hardware -> Focus -> Int -> Int -> FileTree
 ledDir hw focus numLeds n = Dir (show n) [Dir "to" toDirs]
@@ -117,6 +156,7 @@ stat Dir{} = do
   return $ FileStat { statEntryType = Directory
                        , statFileMode = foldr1 unionFileModes
                                           [ ownerReadMode
+                                          , ownerWriteMode
                                           , ownerExecuteMode
                                           , groupReadMode
                                           , groupExecuteMode
@@ -140,6 +180,7 @@ stat File {fileSize = fSize} = do
   return $ FileStat { statEntryType = RegularFile
                               , statFileMode = foldr1 unionFileModes
                                                [ ownerReadMode
+                                               , ownerWriteMode
                                                , groupReadMode
                                                , otherReadMode
                                                ]
