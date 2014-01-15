@@ -51,13 +51,13 @@ ledOpen tree path _ _ = case (lookupPath path tree) of
 
 ledRead :: FileTree -> FilePath -> HT -> ByteCount -> FileOffset -> IO (Either Errno B.ByteString)
 ledRead tree path _ count offset = case (lookupPath path tree) of
-  Just File {fileRead = fRead} -> fRead count offset
-  _                            -> return (Left eNOENT)
+  Just f@File{} -> fileRead f count offset
+  _              -> return (Left eNOENT)
     
 ledWrite :: FileTree -> FilePath -> HT -> B.ByteString -> FileOffset -> IO (Either Errno ByteCount)
 ledWrite tree path _ dataIn offset = case (lookupPath path tree) of
-  Just File {fileWrite = fWrite} -> fWrite dataIn offset
-  _                              -> return (Left eNOENT)
+  Just f@File{} -> fileWrite f dataIn offset
+  _             -> return (Left eNOENT)
                                   
 ledTruncate :: FileTree -> FilePath -> FileOffset -> IO Errno
 ledTruncate _ _ _ = return eOK

@@ -119,8 +119,8 @@ ledDir hw focus numLeds n = Dir (show n) [Dir "to" toDirs]
 
 -- | The name of a file or directory
 treeName :: FileTree -> String
-treeName File{fileName = fName} = fName
-treeName Dir{dirName = dName}   = dName
+treeName f@File{} = fileName f
+treeName d@Dir{} = dirName d
 
 -- | Is this tree a file?
 isFile :: FileTree -> Bool
@@ -170,9 +170,9 @@ stat Dir{} = do
                        , statStatusChangeTime = 0
                        }
 
-stat File {fileSize = fSize} = do
+stat f@File{} = do
   ctx <- getFuseContext
-  size <- fSize
+  size <- fileSize f
   return $ FileStat { statEntryType = RegularFile
                               , statFileMode = foldr1 unionFileModes
                                                [ ownerReadMode
