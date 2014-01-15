@@ -78,17 +78,23 @@ hexFile hw focus = File "hex" readHex writeHex sizeHex
       let subText = take (fromIntegral count) . drop (fromIntegral offset) $ text
       return (Right . B.pack $ subText)
       
-    writeHex inData offset
-      | (fromIntegral offset) `mod` 7 == 0 = if (all isJust parsedLEDs) then
-                                               do
-                                                 oldDisp <- readDisplay hw
-                                                 updateDisplay hw $ replace focus (catMaybes parsedLEDs) oldDisp
-                                                 return $ Right $ fromIntegral $ B.length inData
-                                             else
-                                               return $ Left eINVAL
-      | otherwise = error "unaligned writes not implemented yet."
-      where
-        parsedLEDs = map (readLEDHex . init) $ chunksOf 7 $ B.unpack inData
+    writeHex inData coffset = do
+      oldDisp <- readDisplay hw
+      let
+        oldFocusedDisp = focusOn focus oldDisp
+        offset     = fromIntegral coffset
+        oldStr     = B.pack . unlines . map toHex $ oldFocusedDisp
+        -- Convert original data to string, splice in input string, attempt to parse the new string
+        -- This method allows us to easily handle arbitrary offsets, but is also inefficient
+        -- TODO: allow unaligned writing without loading the entire array
+        splicedStr = B.concat [B.take offset oldStr,
+                               inData,
+                               B.drop (offset + B.length inData) oldStr]
+        parsedLEDs = map (readLEDHex . init) . chunksOf 7 . B.unpack $ splicedStr
+        newDisp    = replace focus (catMaybes parsedLEDs) oldDisp
+      if (all isJust parsedLEDs)
+        then (updateDisplay hw newDisp) >> (return . Right . fromIntegral . B.length $ inData)
+        else return . Left $ eINVAL
         
     sizeHex                = liftM ((7*) . length) getFocusedDisplay
 
@@ -99,7 +105,7 @@ readLEDHex str
   | all success parsed = case (map (fst.head) parsed) of
       [r, g, b] -> Just (RGB r g b)
       _         -> Nothing
-  | otherwise          = Nothing
+  | otherwise    = Nothing
   where
     parsed = map N.readHex (chunksOf 2 str)
     success [(_, rest)] = null rest
