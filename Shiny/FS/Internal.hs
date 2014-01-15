@@ -5,7 +5,6 @@ import qualified Data.ByteString.Char8 as B
 import System.Fuse
 import System.Posix.Types
 import System.Posix.Files hiding (fileSize)
-import System.Posix.IO
 
 import Control.Monad
 import Data.List (find)
@@ -41,9 +40,9 @@ instance Show FileTree where
 mkFileTree :: Hardware -> IO (FileTree)
 mkFileTree hw = do
   numLeds <- displaySize hw
-  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (map (ledDir hw all numLeds) [0..numLeds-1])]
+  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (map (ledDir hw focusAll numLeds) [0..numLeds-1])]
   where
-    all = onIndices (const True)
+    focusAll = onIndices (const True)
 
 -- | Adds a parent tree to a dir
 addChild :: FileTree -> FileTree -> FileTree
@@ -110,17 +109,7 @@ readLEDHex str
     parsed = map N.readHex (chunksOf 2 str)
     success [(_, rest)] = null rest
     success _           = False
-    
-writeHex inData offset
-  | offset `mod` 7 == 0 = if (all isJust parsedLEDs) then
-                            Right $ catMaybes parsedLEDs
-                          else
-                            Left eINVAL
-  | otherwise = error "unaligned writes not implemented yet."
-    
-    where
-      parsedLEDs = map (readLEDHex . init) $ chunksOf 7 $ B.unpack inData
-    
+        
 -- | TODO
 ledDir :: Hardware -> Focus -> Int -> Int -> FileTree
 ledDir hw focus numLeds n = Dir (show n) [Dir "to" toDirs]
@@ -153,6 +142,7 @@ lookupPath ('/':path) tree
   where
     child = find ((==name) . treeName) (dirChildren tree)
     (name, subPath) = span (/= '/') path
+lookupPath _ _ = Nothing
 
 -- | File status
 stat :: FileTree -> IO (FileStat)
