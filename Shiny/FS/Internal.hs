@@ -42,9 +42,13 @@ mkFileTree hw = do
   numLeds <- displaySize hw
   let
     focusAll = range 0 numLeds
-    allHex = hexFile hw focusAll
     ledDirs = map (ledDir hw id numLeds) [0..numLeds-1]
-  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (allHex:ledDirs)]
+  return $ Dir "/" $ [
+    countFile numLeds,
+    Dir "leds" $ ledDirs ++ [ hexFile hw focusAll
+                            , allHexFile hw focusAll
+                            ]
+    ]
 
 -- | Adds a parent tree to a dir
 addChild :: FileTree -> FileTree -> FileTree
@@ -99,7 +103,30 @@ hexFile hw focus = File "hex" readHex writeHex sizeHex
         
     sizeHex                = liftM ((7*) . length) getFocusedDisplay
 
-
+-- | File for editing a subset of a display as a single RGB value
+allHexFile :: Hardware -> Focus -> FileTree
+allHexFile hw focus = File "hexall" readHex writeHex sizeHex
+  where
+    readHex count offset = return . Right . B.pack . take (fromIntegral count) . drop (fromIntegral offset) $ "000000"
+    
+    writeHex inData coffset = do
+      oldDisp <- readDisplay hw
+      let
+        offset = fromIntegral coffset
+        oldStr = B.pack "000000"
+        splicedStr = B.concat [B.take offset oldStr,
+                               inData,
+                               B.drop (offset + B.length inData) oldStr]
+        parsedLED = readLEDHex . B.unpack $ splicedStr
+        newDisp = replace focus (repeat (fromJust parsedLED)) oldDisp
+        
+      if (isJust parsedLED)
+        then (updateDisplay hw newDisp) >> (return . Right . fromIntegral . B.length $ inData)
+        else return . Left $ eINVAL 
+             
+    sizeHex = return 6
+        
+    
 -- | Attempts to parse an LED from a string of 6 hex digits
 readLEDHex :: String -> Maybe LED
 readLEDHex str
@@ -119,8 +146,9 @@ ledDir hw comb numLeds n = Dir (show n) [Dir "to" toDirs]
     toDirs = map subLedDir [n..numLeds-1]
     subLedDir m = let subFocus = comb (range n (m+1)) in
       Dir (show m) [hexFile hw subFocus
-                    , Dir "and"    (map (ledDir hw (subFocus `alsoOn`  ) numLeds) [0..numLeds-1])
-                    , Dir "except" (map (ledDir hw (subFocus `exceptOn`) numLeds) [0..numLeds-1])
+                   , allHexFile hw subFocus
+                   , Dir "and"    (map (ledDir hw (subFocus `alsoOn`  ) numLeds) [0..numLeds-1])
+                   , Dir "except" (map (ledDir hw (subFocus `exceptOn`) numLeds) [0..numLeds-1])
                    ]
 
 -- | The name of a file or directory
