@@ -7,7 +7,8 @@ import System.Posix.Types
 import Shiny.FS.Internal
 
 import Shiny.Hardware (Hardware)
-import Shiny.Hardware.Dummy (mkDummyHardware)
+--import Shiny.Hardware.Dummy (mkDummyHardware)
+import Shiny.Hardware.Serial (mkSerialHardware)
 
 import Control.Monad
 
@@ -78,6 +79,6 @@ main :: IO()
 main = do
   progName <- getProgName
   args <- getArgs
-  hw <- mkDummyHardware 8
+  hw <- mkSerialHardware "/dev/ttyACM0" (8*40)
   fs <- ledFSOps hw
   fuseRun progName args fs defaultExceptionHandler
