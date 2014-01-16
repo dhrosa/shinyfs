@@ -40,7 +40,11 @@ instance Show FileTree where
 mkFileTree :: Hardware -> IO (FileTree)
 mkFileTree hw = do
   numLeds <- displaySize hw
-  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (map (ledDir hw id numLeds) [0..numLeds-1])]
+  let
+    focusAll = range 0 numLeds
+    allHex = hexFile hw focusAll
+    ledDirs = map (ledDir hw id numLeds) [0..numLeds-1]
+  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (allHex:ledDirs)]
 
 -- | Adds a parent tree to a dir
 addChild :: FileTree -> FileTree -> FileTree
