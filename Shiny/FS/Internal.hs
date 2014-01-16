@@ -40,9 +40,7 @@ instance Show FileTree where
 mkFileTree :: Hardware -> IO (FileTree)
 mkFileTree hw = do
   numLeds <- displaySize hw
-  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (map (ledDir hw focusNone numLeds) [0..numLeds-1])]
-  where
-    focusNone = range 0 0
+  return $ Dir "/" $ [countFile numLeds,  Dir "leds" (map (ledDir hw id numLeds) [0..numLeds-1])]
 
 -- | Adds a parent tree to a dir
 addChild :: FileTree -> FileTree -> FileTree
@@ -111,13 +109,14 @@ readLEDHex str
     success _           = False
         
 -- | TODO
-ledDir :: Hardware -> Focus -> Int -> Int -> FileTree
-ledDir hw focus numLeds n = Dir (show n) [Dir "to" toDirs]
+ledDir :: Hardware -> (Focus -> Focus) -> Int -> Int -> FileTree
+ledDir hw comb numLeds n = Dir (show n) [Dir "to" toDirs]
   where
     toDirs = map subLedDir [n..numLeds-1]
-    subLedDir m = let subFocus = focus `alsoOn` range n (m+1) in
+    subLedDir m = let subFocus = comb (range n (m+1)) in
       Dir (show m) [hexFile hw subFocus
-                    , Dir "and" (map (ledDir hw subFocus numLeds) [0..numLeds-1])
+                    , Dir "and"    (map (ledDir hw (subFocus `alsoOn`  ) numLeds) [0..numLeds-1])
+                    , Dir "except" (map (ledDir hw (subFocus `exceptOn`) numLeds) [0..numLeds-1])
                    ]
 
 -- | The name of a file or directory
