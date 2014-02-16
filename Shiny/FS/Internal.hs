@@ -19,6 +19,11 @@ import qualified Numeric as N
 
 import Shiny.Focus
 
+data FSState = FSState {
+  hardware :: Hardware,
+  fileTree :: FileTree
+}
+
 data FileTree = File
                 {
                   fileName  :: String,
